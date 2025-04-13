@@ -109,59 +109,116 @@ public class BufferMgr implements TransactionLifecycleListener {
 	 * @return the buffer pinned to that block
 	 */
 	public Buffer pin(BlockId blk) {
-		synchronized (bufferPool) {
-			// Try to find out if this block has been pinned by this transaction
-			PinningBuffer pinnedBuff = pinningBuffers.get(blk);
+		boolean opt = true;
+
+		if(opt){
+			// Check if already pinned by this transaction
+			PinningBuffer pinnedBuff;
+			
+			pinnedBuff = pinningBuffers.get(blk);
 			if (pinnedBuff != null) {
 				pinnedBuff.pinCount++;
 				return pinnedBuff.buffer;
 			}
-
-			/*
-			 * Throws BufferAbortException if the calling tx requires more buffers than the
-			 * size of buffer pool.
-			 */
-			if (pinningBuffers.size() == BUFFER_POOL_SIZE)
+	
+			if (pinningBuffers.size() == BUFFER_POOL_SIZE) {
 				throw new BufferAbortException();
-
-			// Pinning process
+			}
+			
+		
+			Buffer buff = null;
+			long timestamp = System.currentTimeMillis();
+		
 			try {
-				Buffer buff;
-				long timestamp = System.currentTimeMillis();
-
-				// Try to pin a buffer or the pinned buffer for the given BlockId
-				buff = bufferPool.pin(blk);
-
-				// If there is no such buffer or no available buffer,
-				// wait for it
-				if (buff == null) {
-					waitingThreads.add(Thread.currentThread());
-
-					while (buff == null && !waitingTooLong(timestamp)) {
-						bufferPool.wait(MAX_TIME);
-						if (waitingThreads.get(0).equals(Thread.currentThread()))
-							buff = bufferPool.pin(blk);
+				synchronized (bufferPool) {
+					buff = bufferPool.pin(blk);
+		
+					if (buff == null) {
+						waitingThreads.add(Thread.currentThread());
+						
+		
+						while (buff == null && !waitingTooLong(timestamp)) {
+							bufferPool.wait(MAX_TIME);
+		
+							if (waitingThreads.get(0).equals(Thread.currentThread())) {
+								buff = bufferPool.pin(blk);
+							}
+							
+						}
+		
+							waitingThreads.remove(Thread.currentThread());
+		
+						bufferPool.notifyAll();
 					}
-
-					waitingThreads.remove(Thread.currentThread());
-
-					// Wake up other waiting threads (after leaving this critical section)
-					bufferPool.notifyAll();
 				}
-
-				// If it still has no buffer after a long wait,
-				// release and re-pin all buffers it has
+		
 				if (buff == null) {
 					repin();
-					buff = pin(blk);
+					return pin(blk); // Retry with full logic
 				} else {
-					pinningBuffers.put(buff.block(), new PinningBuffer(buff));
+						pinningBuffers.put(buff.block(), new PinningBuffer(buff));
+					return buff;
 				}
-
-				return buff;
 			} catch (InterruptedException e) {
 				throw new BufferAbortException();
 			}
+		}
+		else{
+			synchronized (bufferPool) {
+				// Try to find out if this block has been pinned by this transaction
+				PinningBuffer pinnedBuff = pinningBuffers.get(blk);
+				if (pinnedBuff != null) {
+					pinnedBuff.pinCount++;
+					return pinnedBuff.buffer;
+				}
+	
+				/*
+				 * Throws BufferAbortException if the calling tx requires more buffers than the
+				 * size of buffer pool.
+				 */
+				if (pinningBuffers.size() == BUFFER_POOL_SIZE)
+					throw new BufferAbortException();
+	
+				// Pinning process
+				try {
+					Buffer buff;
+					long timestamp = System.currentTimeMillis();
+	
+					// Try to pin a buffer or the pinned buffer for the given BlockId
+					buff = bufferPool.pin(blk);
+	
+					// If there is no such buffer or no available buffer,
+					// wait for it
+					if (buff == null) {
+						waitingThreads.add(Thread.currentThread());
+	
+						while (buff == null && !waitingTooLong(timestamp)) {
+							bufferPool.wait(MAX_TIME);
+							if (waitingThreads.get(0).equals(Thread.currentThread()))
+								buff = bufferPool.pin(blk);
+						}
+	
+						waitingThreads.remove(Thread.currentThread());
+	
+						// Wake up other waiting threads (after leaving this critical section)
+						bufferPool.notifyAll();
+					}
+	
+					// If it still has no buffer after a long wait,
+					// release and re-pin all buffers it has
+					if (buff == null) {
+						repin();
+						buff = pin(blk);
+					} else {
+						pinningBuffers.put(buff.block(), new PinningBuffer(buff));
+					}
+	
+					return buff;
+				} catch (InterruptedException e) {
+					throw new BufferAbortException();
+				}
+			}
+		
 		}
 	}
 
@@ -175,30 +232,37 @@ public class BufferMgr implements TransactionLifecycleListener {
 	 * @return the buffer pinned to that block
 	 */
 	public Buffer pinNew(String fileName, PageFormatter fmtr) {
-		synchronized (bufferPool) {
+		boolean opt = true;
+
+		if(opt){
 			if (pinningBuffers.size() == BUFFER_POOL_SIZE)
 				throw new BufferAbortException();
+			
+
 			try {
 				Buffer buff;
 				long timestamp = System.currentTimeMillis();
+				
+				synchronized (bufferPool) {
+					// Try to pin a buffer or the pinned buffer for the given BlockId
+					buff = bufferPool.pinNew(fileName, fmtr);
+				
+					// If there is no such buffer or no available buffer,
+					// wait for it
+					if (buff == null) {
+						waitingThreads.add(Thread.currentThread());
+					
+						while (buff == null && !waitingTooLong(timestamp)) {
+							bufferPool.wait(MAX_TIME);
+							if (waitingThreads.get(0).equals(Thread.currentThread()))
+								buff = bufferPool.pinNew(fileName, fmtr);
+						}
 
-				// Try to pin a buffer or the pinned buffer for the given BlockId
-				buff = bufferPool.pinNew(fileName, fmtr);
+						waitingThreads.remove(Thread.currentThread());
+			
 
-				// If there is no such buffer or no available buffer,
-				// wait for it
-				if (buff == null) {
-					waitingThreads.add(Thread.currentThread());
-
-					while (buff == null && !waitingTooLong(timestamp)) {
-						bufferPool.wait(MAX_TIME);
-						if (waitingThreads.get(0).equals(Thread.currentThread()))
-							buff = bufferPool.pinNew(fileName, fmtr);
+						bufferPool.notifyAll();
 					}
-
-					waitingThreads.remove(Thread.currentThread());
-
-					bufferPool.notifyAll();
 				}
 
 				// If it still has no buffer after a long wait,
@@ -209,14 +273,58 @@ public class BufferMgr implements TransactionLifecycleListener {
 				} else {
 					pinningBuffers.put(buff.block(), new PinningBuffer(buff));
 				}
+				
 
 				return buff;
 			} catch (InterruptedException e) {
 				throw new BufferAbortException();
 			}
+
+		}
+		else{
+			synchronized (bufferPool) {
+				if (pinningBuffers.size() == BUFFER_POOL_SIZE)
+					throw new BufferAbortException();
+				try {
+					Buffer buff;
+					long timestamp = System.currentTimeMillis();
+
+					// Try to pin a buffer or the pinned buffer for the given BlockId
+					buff = bufferPool.pinNew(fileName, fmtr);
+
+					// If there is no such buffer or no available buffer,
+					// wait for it
+					if (buff == null) {
+						waitingThreads.add(Thread.currentThread());
+
+						while (buff == null && !waitingTooLong(timestamp)) {
+							bufferPool.wait(MAX_TIME);
+							if (waitingThreads.get(0).equals(Thread.currentThread()))
+								buff = bufferPool.pinNew(fileName, fmtr);
+						}
+
+						waitingThreads.remove(Thread.currentThread());
+
+						bufferPool.notifyAll();
+					}
+
+					// If it still has no buffer after a long wait,
+					// release and re-pin all buffers it has
+					if (buff == null) {
+						repin();
+						buff = pinNew(fileName, fmtr);
+					} else {
+						pinningBuffers.put(buff.block(), new PinningBuffer(buff));
+					}
+
+					return buff;
+				} catch (InterruptedException e) {
+					throw new BufferAbortException();
+				}
+			}
 		}
 	}
-
+	
 	/**
 	 * Unpins the specified buffer. If the buffer's pin count becomes 0, then the
 	 * threads on the wait list are notified.
@@ -224,17 +332,37 @@ public class BufferMgr implements TransactionLifecycleListener {
 	 * @param buff the buffer to be unpinned
 	 */
 	public void unpin(Buffer buff) {
-		synchronized (bufferPool) {
+		boolean opt = true;
+
+		if(opt){ 
 			BlockId blk = buff.block();
 			PinningBuffer pinnedBuff = pinningBuffers.get(blk);
 
 			if (pinnedBuff != null) {
 				pinnedBuff.pinCount--;
 
-				if (pinnedBuff.pinCount == 0) {
-					bufferPool.unpin(buff);
-					pinningBuffers.remove(blk);
-					bufferPool.notifyAll();
+				synchronized (bufferPool) {
+					if (pinnedBuff.pinCount == 0) {
+						bufferPool.unpin(buff);
+						pinningBuffers.remove(blk);
+						bufferPool.notifyAll();
+					}
+				}
+			}
+		}
+		else{
+			synchronized (bufferPool) {
+				BlockId blk = buff.block();
+				PinningBuffer pinnedBuff = pinningBuffers.get(blk);
+
+				if (pinnedBuff != null) {
+					pinnedBuff.pinCount--;
+
+					if (pinnedBuff.pinCount == 0) {
+						bufferPool.unpin(buff);
+						pinningBuffers.remove(blk);
+						bufferPool.notifyAll();
+					}
 				}
 			}
 		}
@@ -272,15 +400,31 @@ public class BufferMgr implements TransactionLifecycleListener {
 	}
 
 	private void unpinAll(Transaction tx) {
-		synchronized (bufferPool) {
+		boolean opt = true;
+
+		if(opt){ 
 			// Copy the set of pinned buffers to avoid ConcurrentModificationException
 			Set<PinningBuffer> pinnedBuffs = new HashSet<PinningBuffer>(pinningBuffers.values());
-			if (pinnedBuffs != null) {
-				for (PinningBuffer pinnedBuff : pinnedBuffs)
-					bufferPool.unpin(pinnedBuff.buffer);
+			synchronized (bufferPool) {
+				if (pinnedBuffs != null) {
+					for (PinningBuffer pinnedBuff : pinnedBuffs)
+						bufferPool.unpin(pinnedBuff.buffer);
+				}
+	
+				bufferPool.notifyAll();
 			}
-
-			bufferPool.notifyAll();
+		}
+		else{
+			synchronized (bufferPool) {
+				// Copy the set of pinned buffers to avoid ConcurrentModificationException
+				Set<PinningBuffer> pinnedBuffs = new HashSet<PinningBuffer>(pinningBuffers.values());
+				if (pinnedBuffs != null) {
+					for (PinningBuffer pinnedBuff : pinnedBuffs)
+						bufferPool.unpin(pinnedBuff.buffer);
+				}
+	
+				bufferPool.notifyAll();
+			}
 		}
 	}
 
@@ -289,10 +433,12 @@ public class BufferMgr implements TransactionLifecycleListener {
 	 * them.
 	 */
 	private void repin() {
-		if (logger.isLoggable(Level.WARNING))
+		boolean opt = true;
+
+		if(opt){ 
+			if (logger.isLoggable(Level.WARNING))
 			logger.warning("Tx." + txNum + " is re-pinning all buffers");
 
-		synchronized (bufferPool) {
 			try {
 				// Copy the pinned buffers to avoid ConcurrentModificationException
 				List<BlockId> blksToBeRepinned = new LinkedList<BlockId>();
@@ -308,8 +454,10 @@ public class BufferMgr implements TransactionLifecycleListener {
 				for (Buffer buf : buffersToBeUnpinned)
 					unpin(buf);
 
-				// Wait other threads pinning blocks
-				bufferPool.wait(MAX_TIME);
+				synchronized (bufferPool) {
+					// Wait other threads pinning blocks
+					bufferPool.wait(MAX_TIME);	
+				}
 
 				// Re-pin all blocks
 				for (BlockId blk : blksToBeRepinned)
@@ -318,6 +466,38 @@ public class BufferMgr implements TransactionLifecycleListener {
 				e.printStackTrace();
 			}
 		}
+		else{
+			if (logger.isLoggable(Level.WARNING))
+			logger.warning("Tx." + txNum + " is re-pinning all buffers");
+
+			synchronized (bufferPool) {
+				try {
+					// Copy the pinned buffers to avoid ConcurrentModificationException
+					List<BlockId> blksToBeRepinned = new LinkedList<BlockId>();
+					List<Buffer> buffersToBeUnpinned = new LinkedList<Buffer>();
+
+					// Unpin all buffers it has
+					for (Entry<BlockId, PinningBuffer> entry : pinningBuffers.entrySet()) {
+						blksToBeRepinned.add(entry.getKey());
+						buffersToBeUnpinned.add(entry.getValue().buffer);
+					}
+
+					// Un-pin all buffers it has
+					for (Buffer buf : buffersToBeUnpinned)
+						unpin(buf);
+
+					// Wait other threads pinning blocks
+					bufferPool.wait(MAX_TIME);
+
+					// Re-pin all blocks
+					for (BlockId blk : blksToBeRepinned)
+						pin(blk);
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
+			}
+		}
+		
 	}
 
 	private boolean waitingTooLong(long startTime) {
