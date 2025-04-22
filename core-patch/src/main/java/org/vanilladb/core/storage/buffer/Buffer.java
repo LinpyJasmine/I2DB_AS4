@@ -52,6 +52,8 @@ public class Buffer {
 	private boolean isNew = false;
 	private Set<Long> modifiedBy = new HashSet<Long>();
 	private LogSeqNum lastLsn = LogSeqNum.DEFAULT_VALUE;
+	private volatile boolean isDirty = false;
+
 
 	// For ARIES-Recovery algorithm
 	// to prevent the buffer from being flushed when performing physiological operations
@@ -86,6 +88,8 @@ public class Buffer {
 	
 	synchronized void setVal(int offset, Constant val) {
 		contents.setVal(DATA_START_OFFSET + offset, val);
+		isDirty = true;
+
 	}
 
 	/**
@@ -172,6 +176,7 @@ public class Buffer {
 				VanillaDb.logMgr().flush(lastLsn);
 				contents.write(blk);
 				modifiedBy.clear();
+				isDirty = false;
 				isNew = false;
 			}
 		} finally {

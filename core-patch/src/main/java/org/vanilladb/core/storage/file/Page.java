@@ -147,7 +147,7 @@ public class Page {
 	 * 
 	 * @return the constant value at that offset
 	 */
-	public Constant getVal(int offset, Type type) {
+	/*public Constant getVal(int offset, Type type) {
 		int size;
 		byte[] byteVal = null;
 
@@ -169,7 +169,26 @@ public class Page {
 			contents.get(offset, byteVal);
 		}
 		return Constant.newInstance(type, byteVal);
+	}*/
+
+	public Constant getVal(int offset, Type type) {
+		synchronized (contents) {
+			int size;
+			byte[] byteVal;
+			if (type.isFixedSize()) {
+				size = type.maxSize();
+			} else {
+				byteVal = new byte[ByteHelper.INT_SIZE];
+				contents.get(offset, byteVal);
+				size = ByteHelper.toInteger(byteVal);
+				offset += ByteHelper.INT_SIZE;
+			}
+			byteVal = new byte[size];
+			contents.get(offset, byteVal);
+			return Constant.newInstance(type, byteVal);
+		}
 	}
+	
 
 	/**
 	 * Writes a constant value to the specified offset on the page.

@@ -121,7 +121,7 @@ public class FileMgr {
 	 * @param buffer
 	 *            the byte buffer
 	 */
-	synchronized void read(BlockId blk, IoBuffer buffer) {
+	/*synchronized void read(BlockId blk, IoBuffer buffer) {
 		try {
 			IoChannel fileChannel = getFileChannel(blk.fileName());
 
@@ -134,7 +134,21 @@ public class FileMgr {
 			e.printStackTrace();
 			throw new RuntimeException("cannot read block " + blk);
 		}
+	}*/
+	void read(BlockId blk, IoBuffer buffer) {
+		IoChannel fileChannel;
+		try {
+			synchronized (openFiles) {
+				fileChannel = getFileChannel(blk.fileName());
+			}
+	
+			buffer.clear();
+			fileChannel.read(buffer, blk.number() * BLOCK_SIZE);
+		} catch (IOException e) {
+			throw new RuntimeException("cannot read block " + blk, e);
+		}
 	}
+	
 
 	/**
 	 * Writes the contents of a byte buffer into a disk block.
