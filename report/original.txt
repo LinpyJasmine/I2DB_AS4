@@ -1,0 +1,7 @@
+# of txns (including aborted) during benchmark period: 24040
+DELIVERY - committed: 0, aborted: 0, avg latency: 0 ms
+STOCK_LEVEL - committed: 0, aborted: 0, avg latency: 0 ms
+ORDER_STATUS - committed: 0, aborted: 0, avg latency: 0 ms
+PAYMENT - committed: 11997, aborted: 38, avg latency: 3 ms
+NEW_ORDER - committed: 12003, aborted: 2, avg latency: 6 ms
+TOTAL - committed: 24000, aborted: 40, avg latency: 5 ms
