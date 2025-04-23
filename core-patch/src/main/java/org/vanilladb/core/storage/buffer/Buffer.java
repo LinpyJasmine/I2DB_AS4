@@ -54,7 +54,6 @@ public class Buffer {
 	private LogSeqNum lastLsn = LogSeqNum.DEFAULT_VALUE;
 	private volatile boolean isDirty = false;
 
-
 	// For ARIES-Recovery algorithm
 	// to prevent the buffer from being flushed when performing physiological operations
 	private final Lock flushLock = new ReentrantLock();
@@ -89,7 +88,6 @@ public class Buffer {
 	synchronized void setVal(int offset, Constant val) {
 		contents.setVal(DATA_START_OFFSET + offset, val);
 		isDirty = true;
-
 	}
 
 	/**
@@ -172,11 +170,11 @@ public class Buffer {
 	synchronized void flush() {
 		flushLock.lock();
 		try {
-			if (isNew || modifiedBy.size() > 0) {
+			if (isNew || isDirty) {
 				VanillaDb.logMgr().flush(lastLsn);
 				contents.write(blk);
 				modifiedBy.clear();
-				isDirty = false;
+				isDirty = false; 
 				isNew = false;
 			}
 		} finally {
